@@ -89,6 +89,33 @@ https://aaaa.bbbb.com:11111/api/v1/client/subscribe?token=xxxxxxxxxxxxxxxxxxxxxx
 https://your-domain.com:端口/api/v1/client/subscribe?token=xxxxxxxxxxxxxxxxxxxxxxx
 ```
 
+## 套 AxisNow CDN 时获取真实客户端 IP
+
+如果订阅域名前套了 AxisNow CDN，需要在 AxisNow 侧启用真实客户端 IP 传递，并在 SubSieve 侧只信任 AxisNow Edge/EIP。否则 nginx 的 `$remote_addr` 会是 AxisNow 回源 IP，日志、云 IP 判断、黑白名单和速率限制都会按 CDN IP 生效。
+
+首次部署时，`setup.sh` 会询问 `AxisNow Edge/EIP`，填入 AxisNow 面板中 Edge/EIP 列表里的回源地址，多个用英文逗号分隔：
+
+```env
+AXISNOW_TRUSTED_IPS=1.2.3.4,5.6.7.8
+REAL_IP_HEADER=X-Forwarded-For
+```
+
+已部署用户可直接在 `sgw/.env` 追加上述配置，然后重建：
+
+```bash
+cd SubSieve/sgw
+docker compose up -d --build
+```
+
+验证配置是否进入容器：
+
+```bash
+docker exec subscribe-gateway nginx -T | grep -E "set_real_ip_from|real_ip_header|real_ip_recursive"
+docker exec subscribe-gateway tail -n 20 /var/log/subscribe/access.log
+```
+
+如果日志第一列仍是 AxisNow IP，请确认 `AXISNOW_TRUSTED_IPS` 填的是 SubSieve 当前看到的 AxisNow 回源 IP；如果 AxisNow 只传 `X-Real-IP`，将 `REAL_IP_HEADER` 改为 `X-Real-IP` 后重建。
+
 ---
 
 ## 后续更新
