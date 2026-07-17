@@ -1,6 +1,19 @@
 <?php
-session_start();
 require_once __DIR__ . '/config.php';
+
+// ── Session cookie 加固（后台经 Cloudflare Tunnel 公开暴露后的纵深防御）──
+// HttpOnly   防 JS 读取会话（XSS 窃取）
+// SameSite=Lax  防 CSRF
+// Secure     仅在 HTTPS 前端(CF)下启用；经 X-Forwarded-Proto 判断，
+//            这样 localhost/SSH 的 HTTP 直连仍可用（源站 127.0.0.1 可信）
+session_set_cookie_params([
+    'lifetime' => SESSION_LIFETIME,
+    'path'     => '/',
+    'httponly' => true,
+    'secure'   => (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'),
+    'samesite' => 'Lax',
+]);
+session_start();
 
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uri = '/' . ltrim($uri, '/');
