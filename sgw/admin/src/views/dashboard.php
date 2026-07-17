@@ -45,6 +45,36 @@ if (!empty($_preSg['upstream_url'])) {
         $_preSgPort = ($_scheme === 'http') ? 80 : 443;
     }
 }
+// 反代后客户端实际使用的订阅链接（经 Cloudflare Tunnel 公网域名，前端展示用）
+$_publicBase = rtrim((string) GATEWAY_PUBLIC_URL, '/');
+$_subPathDisplay = $_preSg['subscribe_path'] ?? '';
+if ($_subPathDisplay === '') $_subPathDisplay = '/subscription';
+$_exampleSubUrl = $_publicBase !== '' ? ($_publicBase . $_subPathDisplay . '?token=你的TOKEN') : '';
+// 反代后订阅链接展示卡（仅系统设置页；输入 token 或原始订阅链接，自动生成完整链接）
+if ($_publicBase !== '') {
+    $_bpH = htmlspecialchars($_publicBase . $_subPathDisplay, ENT_QUOTES);
+    $_subLinkCardHtml =
+        '<div class="card sublink-card" style="border-color:var(--accent);margin-bottom:16px">'
+      . '<div class="card-title">订阅链接（反代后 · 给客户端使用）</div>'
+      . '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+        . '<input class="ip-input sublink-input" data-base="' . $_bpH . '" placeholder="粘贴 token 或原始订阅链接，自动生成反代后的完整链接..." style="flex:1;min-width:220px">'
+        . '<button class="copy-btn sublink-copy" data-val="" onclick="copyText(this.dataset.val)" style="flex-shrink:0">复制链接</button>'
+        . '<button class="copy-btn sublink-qr-btn" type="button" style="flex-shrink:0">二维码</button>'
+      . '</div>'
+      . '<code class="sublink-out" style="margin-top:8px;display:block;font-size:12px;word-break:break-all;background:var(--bg);padding:10px;border-radius:6px;border:1px solid var(--border2);min-height:20px;color:var(--text3);user-select:all">' . $_bpH . '?token=</code>'
+      . '<div class="sublink-qr-wrap" style="display:none;margin-top:10px;text-align:center">'
+      . '<canvas class="sublink-qr-canvas" style="border-radius:6px"></canvas>'
+      . '<div style="font-size:11px;color:var(--text3);margin-top:6px">扫码即可导入订阅</div>'
+      . '</div>'
+      . '<div class="apply-hint" style="margin-top:8px;color:var(--text3);line-height:1.6">支持直接粘贴 token，或粘贴原始订阅链接自动提取 token；把原订阅的<b>域名</b>换成上面的地址即可。经 Cloudflare Tunnel 走 HTTPS(443)，<b>无需端口</b>。</div>'
+      . '</div>';
+} else {
+    $_subLinkCardHtml =
+        '<div class="card sublink-card" style="border-color:var(--accent);margin-bottom:16px">'
+      . '<div class="card-title">订阅链接（反代后 · 给客户端使用）</div>'
+      . '<div class="apply-hint" style="color:#eab308;line-height:1.6">⚠ 尚未配置公网域名。在宿主机 <code>sgw/.env</code> 设置 <code>GATEWAY_PUBLIC_URL=https://你的订阅域名</code>，执行 <code>docker compose up -d admin</code> 后刷新本页即可显示。</div>'
+      . '</div>';
+}
 function _val(string $v): string { return htmlspecialchars($v, ENT_QUOTES); }
 ?>
 <!DOCTYPE html>
@@ -465,6 +495,7 @@ tr:hover td{background:rgba(99,102,241,.04)}
 
     <!-- ─── 系统设置 ───────────────────────────────────────── -->
     <div class="tab-panel" id="panel-settings">
+        <?= $_subLinkCardHtml ?>
       <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
 
         <!-- 界面设置 -->
@@ -708,6 +739,63 @@ function copyText(text) {
     .then(() => toast('已复制'))
     .catch(() => toast('复制失败，请手动复制','err'));
 }
+
+// ── 订阅链接卡：输入 token 或原始订阅链接，自动提取 token 生成完整链接 + 二维码 ──
+var _qrLibQueue = null;
+function _loadQrLib(cb){
+  if(window.QRious){ cb(); return; }
+  if(_qrLibQueue){ _qrLibQueue.push(cb); return; }
+  _qrLibQueue = [cb];
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js';
+  s.onload = function(){ var q=_qrLibQueue; _qrLibQueue=null; (q||[]).forEach(function(f){try{f()}catch(e){}}); };
+  s.onerror = function(){ toast('二维码库加载失败，请检查网络','err'); _qrLibQueue=null; };
+  document.head.appendChild(s);
+}
+document.querySelectorAll('.sublink-card').forEach(function(card){
+  var inp = card.querySelector('.sublink-input');
+  var out = card.querySelector('.sublink-out');
+  var cBtn = card.querySelector('.sublink-copy');
+  var qBtn = card.querySelector('.sublink-qr-btn');
+  var qWrap = card.querySelector('.sublink-qr-wrap');
+  var qCv = card.querySelector('.sublink-qr-canvas');
+  if(!inp||!out) return;
+  var base = inp.getAttribute('data-base') || '';
+  function extractToken(raw){
+    raw = raw.trim();
+    if(!raw) return '';
+    var m = raw.match(/[?&]token=([^&#]+)/);
+    if(m) return decodeURIComponent(m[1]);
+    if(/:\/\//.test(raw)) return '';
+    return raw;
+  }
+  function curUrl(){ return base + '?token=' + extractToken(inp.value); }
+  function renderQr(){
+    if(!qCv || !extractToken(inp.value)) return;
+    if(window.QRious){
+      new QRious({element:qCv, value:curUrl(), size:200, level:'M', background:'#ffffff', foreground:'#0f1117'});
+    }
+  }
+  function upd(){
+    var url = curUrl();
+    var has = extractToken(inp.value) !== '';
+    out.textContent = url;
+    out.style.color = has ? 'var(--text)' : 'var(--text3)';
+    if(cBtn) cBtn.setAttribute('data-val', url);
+    if(qWrap && qWrap.style.display !== 'none') renderQr();
+  }
+  if(qBtn){
+    qBtn.addEventListener('click', function(){
+      if(!qWrap) return;
+      if(qWrap.style.display !== 'none'){ qWrap.style.display='none'; return; }
+      if(!extractToken(inp.value)){ toast('请先粘贴 token 或订阅链接','err'); return; }
+      qWrap.style.display='block';
+      _loadQrLib(renderQr);
+    });
+  }
+  inp.addEventListener('input', upd);
+  upd();
+});
 
 // ── 日志模式切换 ───────────────────────────────────────────────
 function setLogMode(mode) {
