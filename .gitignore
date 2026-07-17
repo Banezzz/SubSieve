@@ -1,0 +1,5 @@
+# 本地敏感配置与部署产物，请勿提交
+/sgw/.env
+/sgw/DEPLOY_INFO.txt
+/sgw/.setup_state
+/sgw/ssl/
