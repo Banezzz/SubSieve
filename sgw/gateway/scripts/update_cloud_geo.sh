@@ -115,7 +115,7 @@ done
 
 if [[ "${RESULTS[aws]:-fail}" == "ok" ]] && [[ -s "$AWS_TMP" ]]; then
     echo "    # === AWS ===" >> "$OUTPUT_TMP"
-    grep -o '"ip_prefix":"[^"]*"' "$AWS_TMP" | sed 's/"ip_prefix":"//;s/"//' | sort -u | while read -r cidr; do
+    grep -oE '"ip_prefix":[[:space:]]*"[^"]*"' "$AWS_TMP" | sed -E 's/"ip_prefix":[[:space:]]*"//;s/"//' | sort -u | while read -r cidr; do
         echo "    $cidr 1;" >> "$OUTPUT_TMP"
     done || true
     log "  AWS: $(grep -o '"ip_prefix"' "$AWS_TMP" | wc -l || echo 0) 条"
