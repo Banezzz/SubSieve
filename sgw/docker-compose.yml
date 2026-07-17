@@ -1,13 +1,19 @@
 version: '3.8'
 
+# ── Cloudflare Tunnel 部署 ─────────────────────────────────────
+# 网关与管理后台均只绑定 127.0.0.1，禁止外网 IP:端口 直连。
+# 客户端经 Cloudflare Tunnel（在 .env 配 GATEWAY_PUBLIC_URL 的订阅域名）
+#   -> 本机 cloudflared -> http://127.0.0.1:${GATEWAY_PORT} 访问订阅。
+# 管理后台仅本机可达（SSH 端口转发访问 http://127.0.0.1:64444/<path>）。
+# 源站为明文 HTTP，TLS 由 Cloudflare 终结，故不再挂载 ssl/ 证书。
+
 services:
   gateway:
     build: ./gateway
     container_name: subscribe-gateway
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "${GATEWAY_PORT:-443}:443"
+      - "127.0.0.1:47744:80"
     environment:
       - V2B_BACKEND=${V2B_BACKEND}
       - V2B_HOST=${V2B_HOST}
@@ -15,7 +21,6 @@ services:
       - AXISNOW_TRUSTED_IPS=${AXISNOW_TRUSTED_IPS:-}
       - REAL_IP_HEADER=${REAL_IP_HEADER:-X-Forwarded-For}
     volumes:
-      - ./ssl:/etc/nginx/ssl:ro
       - gw_config:/etc/nginx/subscribe
       - gw_logs:/var/log/subscribe
 
@@ -24,14 +29,14 @@ services:
     container_name: subscribe-admin
     restart: unless-stopped
     ports:
-      - "64444:64444"
+      - "127.0.0.1:64444:64444"
     environment:
       - ADMIN_USER=${ADMIN_USER:-admin}
       - ADMIN_PASS=${ADMIN_PASS}
       - ADMIN_SECRET_PATH=${ADMIN_SECRET_PATH}
       - GATEWAY_PORT=${GATEWAY_PORT:-443}
+      - GATEWAY_PUBLIC_URL=${GATEWAY_PUBLIC_URL:-}
     volumes:
-      - ./ssl:/etc/nginx/ssl:ro
       - gw_config:/etc/nginx/subscribe
       - gw_logs:/var/log/subscribe
 
